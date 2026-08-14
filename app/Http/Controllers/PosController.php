@@ -26,9 +26,10 @@ class PosController extends Controller
 
     public function search(Request $request): JsonResponse
     {
-        $request->validate(['q' => ['nullable', 'string', 'max:120'], 'warehouse_id' => ['required', 'integer']]);
+        $request->validate(['q' => ['nullable', 'string', 'max:120'], 'category_id' => ['nullable', 'integer', 'exists:categories,id'], 'warehouse_id' => ['required', 'integer']]);
         $query = trim((string) $request->input('q'));
         $products = $this->productsForPos((int) $request->input('warehouse_id'))
+            ->when($request->filled('category_id'), fn ($builder) => $builder->where('products.category_id', (int) $request->input('category_id')))
             ->when($query !== '', fn ($builder) => $builder->where(function ($q) use ($query) {
                 $q->where('products.barcode', $query)->orWhere('products.sku', $query)->orWhere('products.name', 'like', "%{$query}%");
             }))
@@ -100,7 +101,7 @@ class PosController extends Controller
                 $join->on('inventory_stocks.product_id', '=', 'products.id')->where('inventory_stocks.warehouse_id', '=', $warehouseId ?? 0);
             })
             ->where('products.active', true)
-            ->select('products.id', 'products.name', 'products.sku', 'products.barcode', 'products.image_path', 'products.selling_price', 'products.low_stock_threshold', 'categories.name as category_name', DB::raw('COALESCE(inventory_stocks.quantity, 0) as stock'))
+            ->select('products.id', 'products.category_id', 'products.name', 'products.sku', 'products.barcode', 'products.image_path', 'products.selling_price', 'products.low_stock_threshold', 'categories.name as category_name', DB::raw('COALESCE(inventory_stocks.quantity, 0) as stock'))
             ->orderBy('products.name');
     }
 }
