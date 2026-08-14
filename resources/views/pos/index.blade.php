@@ -16,7 +16,7 @@
 
     <main class="grid gap-0 xl:grid-cols-[1fr_430px]">
         <section class="min-w-0 border-r border-slate-200 bg-slate-50 p-4 lg:p-6">
-            <div class="mb-5 flex flex-col gap-3 sm:flex-row"><div class="relative flex-1"><input id="search" class="w-full py-3 pl-10 pr-4" placeholder="Scan barcode or search product (F1)" autofocus><span class="absolute left-3 top-3.5 text-slate-400">⌕</span></div><button id="shortcut-help" type="button" class="btn-secondary">Shortcuts</button></div>
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row"><div class="relative flex-1"><input id="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-autocomplete" class="w-full py-3 pl-10 pr-4" placeholder="Scan barcode or search product (F1)" autofocus><span class="pointer-events-none absolute left-3 top-3.5 text-slate-400">⌕</span><div id="search-autocomplete" role="listbox" class="absolute z-30 mt-2 hidden max-h-96 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"></div></div><button id="shortcut-help" type="button" class="btn-secondary">Shortcuts</button></div>
             <div id="category-filters" class="mb-5 flex gap-2 overflow-x-auto pb-1"><button type="button" data-category="" class="category-filter rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold whitespace-nowrap text-white">All products</button>@foreach($categories as $category)<button type="button" data-category="{{ $category->id }}" class="category-filter rounded-full bg-white px-4 py-2 text-sm font-semibold whitespace-nowrap text-slate-600 ring-1 ring-slate-200 hover:bg-indigo-50">{{ $category->name }}</button>@endforeach</div>
             <div id="product-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"></div>
             <div id="empty-products" class="hidden py-16 text-center text-sm text-slate-400">No matching products were found.</div>
@@ -34,7 +34,9 @@
 const app = document.getElementById('pos-app');
 const initialProducts = @json($products);
 const placeholderImage = @json(asset('images/products/placeholder.svg'));
-const state = { cart: [], catalog: initialProducts, categoryId: '', method: 'cash' };
+const state = { cart: [], catalog: initialProducts, categoryId: '', method: 'cash', autocomplete: [], activeAutocompleteIndex: -1 };
+const searchInput = document.getElementById('search');
+const autocompletePanel = document.getElementById('search-autocomplete');
 const money = value => 'Rp' + Math.round(Number(value || 0)).toLocaleString('id-ID');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
 
@@ -65,6 +67,55 @@ function renderProducts(products) {
     const empty = document.getElementById('empty-products');
     grid.innerHTML = products.map(product => `<button type="button" class="product-card card group p-3 text-left hover:border-indigo-300 hover:shadow-md" data-product-id="${Number(product.id)}"><div class="mb-3 h-24 overflow-hidden rounded-lg bg-gradient-to-br from-indigo-50 to-slate-100"><img src="${escapeHtml(imageUrl(product))}" alt="" class="h-full w-full object-cover" loading="lazy" onerror="this.src='${placeholderImage}'"></div><p class="truncate text-sm font-bold text-slate-800">${escapeHtml(product.name)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(product.sku)}</p><div class="mt-3 flex items-center justify-between gap-2"><p class="text-sm font-bold text-indigo-700">${money(product.selling_price)}</p>${stockBadge(product)}</div></button>`).join('');
     empty.classList.toggle('hidden', products.length > 0);
+}
+
+function hideAutocomplete() {
+    autocompletePanel.classList.add('hidden');
+    searchInput.setAttribute('aria-expanded', 'false');
+    searchInput.removeAttribute('aria-activedescendant');
+    state.activeAutocompleteIndex = -1;
+}
+
+function renderAutocomplete(products, query) {
+    state.autocomplete = query ? products.slice(0, 8) : [];
+    state.activeAutocompleteIndex = -1;
+    if (!query) {
+        hideAutocomplete();
+        return;
+    }
+
+    if (!state.autocomplete.length) {
+        autocompletePanel.innerHTML = '<p class="px-4 py-3 text-sm text-slate-500">No products match your search.</p>';
+    } else {
+        autocompletePanel.innerHTML = state.autocomplete.map((product, index) => `<button type="button" id="autocomplete-option-${index}" role="option" aria-selected="false" class="autocomplete-option flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-indigo-50" data-index="${index}"><img src="${escapeHtml(imageUrl(product))}" alt="" class="h-10 w-10 rounded-md border border-slate-100 object-cover" onerror="this.src='${placeholderImage}'"><span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-800">${escapeHtml(product.name)}</span><span class="block truncate text-xs text-slate-500">${escapeHtml(product.sku)} · ${escapeHtml(product.category_name || 'Uncategorized')}</span></span><span class="text-right"><span class="block text-sm font-bold text-indigo-700">${money(product.selling_price)}</span><span class="mt-1 inline-block text-xs text-slate-500">Stock ${Math.floor(Number(product.stock || 0))}</span></span></button>`).join('');
+    }
+    autocompletePanel.classList.remove('hidden');
+    searchInput.setAttribute('aria-expanded', 'true');
+}
+
+function updateAutocompleteActive() {
+    autocompletePanel.querySelectorAll('.autocomplete-option').forEach((option, index) => {
+        const active = index === state.activeAutocompleteIndex;
+        option.classList.toggle('bg-indigo-50', active);
+        option.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (state.activeAutocompleteIndex >= 0) {
+        const activeId = `autocomplete-option-${state.activeAutocompleteIndex}`;
+        searchInput.setAttribute('aria-activedescendant', activeId);
+        document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+    } else {
+        searchInput.removeAttribute('aria-activedescendant');
+    }
+}
+
+function selectAutocomplete(index) {
+    const product = state.autocomplete[index];
+    if (!product) return;
+    addProduct(product);
+    searchInput.value = '';
+    hideAutocomplete();
+    loadProducts();
+    searchInput.focus();
 }
 
 function renderCart() {
@@ -114,7 +165,7 @@ function updateActiveCategory() {
 
 let searchTimer;
 async function loadProducts() {
-    const search = document.getElementById('search').value.trim();
+    const search = searchInput.value.trim();
     const parameters = new URLSearchParams({ warehouse_id: app.dataset.warehouse, q: search });
     if (state.categoryId) parameters.set('category_id', state.categoryId);
     const grid = document.getElementById('product-grid');
@@ -124,12 +175,38 @@ async function loadProducts() {
         if (!response.ok) throw new Error('Unable to load products.');
         state.catalog = await response.json();
         renderProducts(state.catalog);
+        renderAutocomplete(state.catalog, search);
     } catch (error) {
+        hideAutocomplete();
         document.getElementById('pos-message').textContent = error.message;
     } finally {
         grid.classList.remove('opacity-50');
     }
 }
+
+autocompletePanel.addEventListener('mousedown', event => event.preventDefault());
+autocompletePanel.addEventListener('click', event => {
+    const option = event.target.closest('.autocomplete-option');
+    if (option) selectAutocomplete(Number(option.dataset.index));
+});
+
+searchInput.addEventListener('focus', () => {
+    if (searchInput.value.trim()) renderAutocomplete(state.catalog, searchInput.value.trim());
+});
+searchInput.addEventListener('blur', () => window.setTimeout(hideAutocomplete, 150));
+
+searchInput.addEventListener('keydown', event => {
+    if (autocompletePanel.classList.contains('hidden')) return;
+    const count = state.autocomplete.length;
+    if (!count) {
+        if (event.key === 'Escape') hideAutocomplete();
+        return;
+    }
+    if (event.key === 'ArrowDown') { event.preventDefault(); state.activeAutocompleteIndex = (state.activeAutocompleteIndex + 1) % count; updateAutocompleteActive(); }
+    if (event.key === 'ArrowUp') { event.preventDefault(); state.activeAutocompleteIndex = (state.activeAutocompleteIndex - 1 + count) % count; updateAutocompleteActive(); }
+    if (event.key === 'Enter') { event.preventDefault(); selectAutocomplete(state.activeAutocompleteIndex >= 0 ? state.activeAutocompleteIndex : 0); }
+    if (event.key === 'Escape') { event.preventDefault(); hideAutocomplete(); }
+});
 
 document.getElementById('product-grid').addEventListener('click', event => {
     const card = event.target.closest('.product-card');
@@ -165,7 +242,7 @@ document.getElementById('cart-lines').addEventListener('click', event => {
 document.getElementById('clear-cart').addEventListener('click', () => { state.cart = []; document.getElementById('pos-message').textContent = ''; renderCart(); });
 document.getElementById('discount').addEventListener('input', renderCart);
 document.getElementById('tendered').addEventListener('input', renderCart);
-document.getElementById('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadProducts, 220); });
+searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadProducts, 180); });
 
 document.querySelectorAll('.payment-method').forEach(button => button.addEventListener('click', () => {
     state.method = button.dataset.method;
@@ -195,12 +272,12 @@ document.getElementById('checkout').addEventListener('click', async () => {
 });
 
 document.addEventListener('keydown', event => {
-    if (event.key === 'F1') { event.preventDefault(); document.getElementById('search').focus(); }
+    if (event.key === 'F1') { event.preventDefault(); searchInput.focus(); }
     if (event.key === 'F6') document.querySelector('[data-method="cash"]').click();
     if (event.key === 'F7') document.querySelector('[data-method="qris"]').click();
     if (event.key === 'F8') document.querySelector('[data-method="card"]').click();
     if (event.key === 'F9') { event.preventDefault(); document.getElementById('checkout').click(); }
-    if (event.key === 'Escape') { document.getElementById('search').value = ''; loadProducts(); }
+    if (event.key === 'Escape') { searchInput.value = ''; hideAutocomplete(); loadProducts(); }
 });
 document.getElementById('shortcut-help').addEventListener('click', () => alert('F1 Search · F6 Cash · F7 QRIS · F8 Card · F9 Complete Sale · ESC Clear search'));
 
