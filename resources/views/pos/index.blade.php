@@ -23,7 +23,7 @@
         </section>
 
         <aside class="flex min-h-[calc(100vh-73px)] flex-col bg-white">
-            <div class="border-b border-slate-100 p-5"><div class="flex items-center justify-between"><div><h2 class="font-bold text-slate-900">Current sale</h2><p class="text-xs text-slate-500">{{ $session ? 'Register session #'.$session->id : 'Open a register before checkout' }}</p></div><button id="clear-cart" type="button" class="text-sm font-semibold text-rose-600 hover:text-rose-700">Clear</button></div><div class="mt-4"><label class="field-label">Customer</label><select id="customer" class="w-full px-3 py-2"><option value="">Walk-in customer</option>@foreach($customers as $customer)<option value="{{ $customer->id }}">{{ $customer->name }}{{ $customer->phone ? ' · '.$customer->phone : '' }}</option>@endforeach</select></div></div>
+            <div class="border-b border-slate-100 p-5"><div class="flex items-center justify-between"><div><h2 class="font-bold text-slate-900">Current sale</h2><p class="text-xs text-slate-500">{{ $session ? 'Register session #'.$session->id : 'Open a register before checkout' }}</p></div><button id="clear-cart" type="button" class="text-sm font-semibold text-rose-600 hover:text-rose-700">Clear</button></div><div class="mt-4"><label class="field-label" for="customer-search">Customer</label><div class="relative"><input id="customer-search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="customer-autocomplete" class="w-full py-2 pl-3 pr-10" placeholder="Search customer name, code, phone, or email"><input id="customer" type="hidden" value=""><button id="clear-customer" type="button" class="absolute right-2 top-2 hidden h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-rose-600" aria-label="Clear customer">×</button><div id="customer-autocomplete" role="listbox" class="absolute left-0 top-full z-40 mt-2 hidden max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"></div></div><p id="customer-selection" class="mt-2 text-xs text-slate-500">Walk-in customer</p></div></div>
             <div id="cart-lines" class="flex-1 divide-y divide-slate-100 overflow-y-auto"><div id="empty-cart" class="p-10 text-center text-sm text-slate-400">Your cart is empty. Search or tap a product to start a sale.</div></div>
             <div class="border-t border-slate-200 p-5"><div class="mb-3 flex items-center justify-between text-sm"><span class="text-slate-500">Subtotal</span><strong id="subtotal">Rp0</strong></div><div class="mb-3 flex items-center gap-2"><label class="w-20 text-sm text-slate-500">Discount</label><input id="discount" type="number" min="0" step="1" value="0" class="w-full px-3 py-2 text-right text-sm"><span class="text-xs text-slate-400">IDR</span></div><div class="mb-4 flex items-center justify-between border-t border-dashed border-slate-200 pt-4"><span class="font-bold text-slate-800">TOTAL</span><strong id="grand-total" class="text-2xl font-black text-indigo-700">Rp0</strong></div><div class="grid grid-cols-3 gap-2"><button type="button" data-method="cash" class="payment-method rounded-lg border-2 border-indigo-600 bg-indigo-50 px-2 py-2 text-sm font-bold text-indigo-700">Cash<br><span class="text-[10px] font-medium">F6</span></button><button type="button" data-method="qris" class="payment-method rounded-lg border border-slate-200 px-2 py-2 text-sm font-bold text-slate-600">QRIS<br><span class="text-[10px] font-medium">F7</span></button><button type="button" data-method="card" class="payment-method rounded-lg border border-slate-200 px-2 py-2 text-sm font-bold text-slate-600">Card<br><span class="text-[10px] font-medium">F8</span></button></div><label class="field-label mt-4">Cash received</label><input id="tendered" type="number" min="0" step="1" class="w-full px-3 py-2.5 text-right text-lg font-bold" value="0"><div class="mt-2 flex justify-between text-sm"><span class="text-slate-500">Change</span><strong id="change" class="text-emerald-600">Rp0</strong></div><button id="checkout" type="button" {{ $session ? '' : 'disabled' }} class="btn-primary mt-5 w-full py-3.5">Complete sale <span>F9</span></button><p id="pos-message" class="mt-3 text-center text-xs text-slate-500" role="status"></p></div>
         </aside>
@@ -33,10 +33,16 @@
 <script>
 const app = document.getElementById('pos-app');
 const initialProducts = @json($products);
+const initialCustomers = @json($customers);
 const placeholderImage = @json(asset('images/products/placeholder.svg'));
-const state = { cart: [], catalog: initialProducts, categoryId: '', method: 'cash', autocomplete: [], activeAutocompleteIndex: -1 };
+const state = { cart: [], catalog: initialProducts, categoryId: '', method: 'cash', autocomplete: [], activeAutocompleteIndex: -1, customers: initialCustomers, customerResults: [], activeCustomerIndex: -1 };
 const searchInput = document.getElementById('search');
 const autocompletePanel = document.getElementById('search-autocomplete');
+const customerSearchInput = document.getElementById('customer-search');
+const customerAutocompletePanel = document.getElementById('customer-autocomplete');
+const customerValueInput = document.getElementById('customer');
+const customerSelection = document.getElementById('customer-selection');
+const clearCustomerButton = document.getElementById('clear-customer');
 const money = value => 'Rp' + Math.round(Number(value || 0)).toLocaleString('id-ID');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
 
@@ -116,6 +122,64 @@ function selectAutocomplete(index) {
     hideAutocomplete();
     loadProducts();
     searchInput.focus();
+}
+
+function hideCustomerAutocomplete() {
+    customerAutocompletePanel.classList.add('hidden');
+    customerSearchInput.setAttribute('aria-expanded', 'false');
+    customerSearchInput.removeAttribute('aria-activedescendant');
+    state.activeCustomerIndex = -1;
+}
+
+function customerSearchText(customer) {
+    return [customer.name, customer.code, customer.phone, customer.email].filter(Boolean).join(' ').toLocaleLowerCase('id-ID');
+}
+
+function renderCustomerAutocomplete() {
+    const query = customerSearchInput.value.trim().toLocaleLowerCase('id-ID');
+    state.customerResults = state.customers.filter(customer => !query || customerSearchText(customer).includes(query)).slice(0, 8);
+    state.activeCustomerIndex = -1;
+    if (!state.customerResults.length) {
+        customerAutocompletePanel.innerHTML = '<p class="px-4 py-3 text-sm text-slate-500">No customers match your search.</p>';
+    } else {
+        customerAutocompletePanel.innerHTML = state.customerResults.map((customer, index) => `<button type="button" id="customer-option-${index}" role="option" aria-selected="false" class="customer-option flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-indigo-50" data-index="${index}"><span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">${escapeHtml(String(customer.name || '?').charAt(0).toUpperCase())}</span><span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-800">${escapeHtml(customer.name)}</span><span class="block truncate text-xs text-slate-500">${escapeHtml(customer.code || '—')}${customer.phone ? ` · ${escapeHtml(customer.phone)}` : ''}</span></span>${customer.outstanding_balance > 0 ? `<span class="text-xs text-amber-600">Due ${money(customer.outstanding_balance)}</span>` : ''}</button>`).join('');
+    }
+    customerAutocompletePanel.classList.remove('hidden');
+    customerSearchInput.setAttribute('aria-expanded', 'true');
+}
+
+function updateCustomerAutocompleteActive() {
+    customerAutocompletePanel.querySelectorAll('.customer-option').forEach((option, index) => {
+        const active = index === state.activeCustomerIndex;
+        option.classList.toggle('bg-indigo-50', active);
+        option.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (state.activeCustomerIndex >= 0) {
+        const id = `customer-option-${state.activeCustomerIndex}`;
+        customerSearchInput.setAttribute('aria-activedescendant', id);
+        document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    } else {
+        customerSearchInput.removeAttribute('aria-activedescendant');
+    }
+}
+
+function clearCustomer() {
+    customerValueInput.value = '';
+    customerSearchInput.value = '';
+    customerSelection.textContent = 'Walk-in customer';
+    clearCustomerButton.classList.add('hidden');
+    hideCustomerAutocomplete();
+}
+
+function selectCustomer(index) {
+    const customer = state.customerResults[index];
+    if (!customer) return;
+    customerValueInput.value = customer.id;
+    customerSearchInput.value = customer.name;
+    customerSelection.textContent = [customer.code, customer.phone, customer.email].filter(Boolean).join(' · ') || 'Customer selected';
+    clearCustomerButton.classList.remove('hidden');
+    hideCustomerAutocomplete();
+    customerSearchInput.focus();
 }
 
 function renderCart() {
@@ -208,6 +272,28 @@ searchInput.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); hideAutocomplete(); }
 });
 
+customerAutocompletePanel.addEventListener('mousedown', event => event.preventDefault());
+customerAutocompletePanel.addEventListener('click', event => {
+    const option = event.target.closest('.customer-option');
+    if (option) selectCustomer(Number(option.dataset.index));
+});
+customerSearchInput.addEventListener('focus', renderCustomerAutocomplete);
+customerSearchInput.addEventListener('blur', () => window.setTimeout(hideCustomerAutocomplete, 150));
+customerSearchInput.addEventListener('input', renderCustomerAutocomplete);
+customerSearchInput.addEventListener('keydown', event => {
+    if (customerAutocompletePanel.classList.contains('hidden')) return;
+    const count = state.customerResults.length;
+    if (!count) {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hideCustomerAutocomplete(); }
+        return;
+    }
+    if (event.key === 'ArrowDown') { event.preventDefault(); state.activeCustomerIndex = (state.activeCustomerIndex + 1) % count; updateCustomerAutocompleteActive(); }
+    if (event.key === 'ArrowUp') { event.preventDefault(); state.activeCustomerIndex = (state.activeCustomerIndex - 1 + count) % count; updateCustomerAutocompleteActive(); }
+    if (event.key === 'Enter') { event.preventDefault(); selectCustomer(state.activeCustomerIndex >= 0 ? state.activeCustomerIndex : 0); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hideCustomerAutocomplete(); }
+});
+clearCustomerButton.addEventListener('click', clearCustomer);
+
 document.getElementById('product-grid').addEventListener('click', event => {
     const card = event.target.closest('.product-card');
     if (!card) return;
@@ -277,7 +363,7 @@ document.addEventListener('keydown', event => {
     if (event.key === 'F7') document.querySelector('[data-method="qris"]').click();
     if (event.key === 'F8') document.querySelector('[data-method="card"]').click();
     if (event.key === 'F9') { event.preventDefault(); document.getElementById('checkout').click(); }
-    if (event.key === 'Escape') { searchInput.value = ''; hideAutocomplete(); loadProducts(); }
+    if (event.key === 'Escape' && event.target !== customerSearchInput) { searchInput.value = ''; hideAutocomplete(); loadProducts(); }
 });
 document.getElementById('shortcut-help').addEventListener('click', () => alert('F1 Search · F6 Cash · F7 QRIS · F8 Card · F9 Complete Sale · ESC Clear search'));
 
