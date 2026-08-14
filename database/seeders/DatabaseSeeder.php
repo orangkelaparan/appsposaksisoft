@@ -75,10 +75,12 @@ class DatabaseSeeder extends Seeder
         foreach ($names as $i => $name) {
             $cost = 5000 + (($i % 9) * 1750);
             $price = $cost * 1.35;
-            $productId = DB::table('products')->insertGetId(['category_id' => ($i % 6) + 1, 'brand_id' => ($i % 5) + 1, 'unit_id' => 1, 'default_supplier_id' => ($i % 3) + 1, 'sku' => 'AKS-'.str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT), 'barcode' => '899100'.str_pad((string) ($i + 1), 7, '0', STR_PAD_LEFT), 'name' => $name, 'slug' => Str::slug($name).'-'.($i + 1), 'product_type' => 'simple', 'purchase_cost' => $cost, 'selling_price' => $price, 'low_stock_threshold' => 8, 'track_inventory' => true, 'allow_negative_inventory' => false, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
+            $productId = DB::table('products')->insertGetId(['category_id' => ($i % 6) + 1, 'brand_id' => ($i % 5) + 1, 'unit_id' => 1, 'default_supplier_id' => ($i % 3) + 1, 'sku' => 'AKS-'.str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT), 'barcode' => '899100'.str_pad((string) ($i + 1), 7, '0', STR_PAD_LEFT), 'name' => $name,                 'slug' => Str::slug($name).'-'.($i + 1), 'description' => 'Produk ritel berkualitas untuk kebutuhan sehari-hari.', 'image_path' => 'images/products/placeholder.svg', 'product_type' => 'simple', 'purchase_cost' => $cost, 'selling_price' => $price, 'low_stock_threshold' => 8, 'track_inventory' => true, 'allow_negative_inventory' => false, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
             $qty = 20 + ($i % 21);
             DB::table('inventory_stocks')->insert(['warehouse_id' => $centralWarehouse, 'product_id' => $productId, 'quantity' => $qty, 'average_cost' => $cost, 'created_at' => $now, 'updated_at' => $now]);
             DB::table('inventory_ledgers')->insert(['warehouse_id' => $centralWarehouse, 'product_id' => $productId, 'user_id' => $adminId, 'movement_type' => 'stock_opening', 'quantity' => $qty, 'before_quantity' => 0, 'after_quantity' => $qty, 'unit_cost' => $cost, 'reference_type' => 'seed', 'reference_id' => 0, 'note' => 'Development opening stock', 'created_at' => $now, 'updated_at' => $now]);
         }
+
+        $this->call(RichDemoSeeder::class);
     }
 }

@@ -100,7 +100,7 @@ class PosController extends Controller
                 $join->on('inventory_stocks.product_id', '=', 'products.id')->where('inventory_stocks.warehouse_id', '=', $warehouseId ?? 0);
             })
             ->where('products.active', true)
-            ->select('products.id', 'products.name', 'products.sku', 'products.barcode', 'products.selling_price', 'products.low_stock_threshold', 'categories.name as category_name', DB::raw('COALESCE(inventory_stocks.quantity, 0) as stock'))
+            ->select('products.id', 'products.name', 'products.sku', 'products.barcode', 'products.image_path', 'products.selling_price', 'products.low_stock_threshold', 'categories.name as category_name', DB::raw('COALESCE(inventory_stocks.quantity, 0) as stock'))
             ->orderBy('products.name');
     }
 }

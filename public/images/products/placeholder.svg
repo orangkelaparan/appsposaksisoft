@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-labelledby="title desc">
+  <title id="title">AksiSoft product placeholder</title>
+  <desc id="desc">Illustrated retail product placeholder in indigo and emerald.</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#EEF2FF"/><stop offset="1" stop-color="#ECFDF5"/></linearGradient>
+    <linearGradient id="pack" x1="0" x2="1"><stop stop-color="#4F46E5"/><stop offset="1" stop-color="#0F766E"/></linearGradient>
+  </defs>
+  <rect width="640" height="480" rx="32" fill="url(#surface)"/>
+  <circle cx="523" cy="96" r="74" fill="#C7D2FE" opacity=".55"/>
+  <circle cx="118" cy="406" r="100" fill="#A7F3D0" opacity=".5"/>
+  <g transform="translate(170 75)">
+    <path d="M90 70h120l20 250H70z" fill="url(#pack)"/>
+    <path d="M108 38h84l18 48H90z" fill="#312E81"/>
+    <rect x="96" y="136" width="108" height="96" rx="12" fill="#FFFFFF" opacity=".94"/>
+    <path d="M122 206V154h20c20 0 31 9 31 25 0 17-12 27-31 27h-7v0h-13zm20-17h5c7 0 11-4 11-10s-4-10-11-10h-5v20z" fill="#4F46E5"/>
+  </g>
+  <text x="320" y="420" text-anchor="middle" fill="#334155" font-family="Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3">AKSISOFT RETAIL</text>
+</svg>

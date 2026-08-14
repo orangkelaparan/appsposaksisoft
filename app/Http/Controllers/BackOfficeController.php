@@ -43,9 +43,9 @@ class BackOfficeController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:180'], 'sku' => ['required', 'string', 'max:80', 'unique:products,sku'], 'barcode' => ['nullable', 'string', 'max:80', 'unique:products,barcode'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'], 'brand_id' => ['nullable', 'integer', 'exists:brands,id'], 'unit_id' => ['nullable', 'integer', 'exists:units,id'], 'default_supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
-            'purchase_cost' => ['required', 'numeric', 'min:0'], 'selling_price' => ['required', 'numeric', 'min:0'], 'low_stock_threshold' => ['required', 'numeric', 'min:0'],
+            'purchase_cost' => ['required', 'numeric', 'min:0'], 'selling_price' => ['required', 'numeric', 'min:0'], 'low_stock_threshold' => ['required', 'numeric', 'min:0'], 'image_path' => ['nullable', 'string', 'max:255'],
         ]);
-        $id = DB::table('products')->insertGetId(array_merge($data, ['slug' => Str::slug($data['name']).'-'.Str::lower(Str::random(5)), 'product_type' => 'simple', 'track_inventory' => true, 'allow_negative_inventory' => false, 'active' => true, 'created_at' => now(), 'updated_at' => now()]));
+        $id = DB::table('products')->insertGetId(array_merge($data, ['image_path' => $data['image_path'] ?: 'images/products/placeholder.svg', 'slug' => Str::slug($data['name']).'-'.Str::lower(Str::random(5)), 'product_type' => 'simple', 'track_inventory' => true, 'allow_negative_inventory' => false, 'active' => true, 'created_at' => now(), 'updated_at' => now()]));
         $audit->record('created', 'products', 'product', $id, null, $data);
 
         return back()->with('success', 'Product created successfully.');
