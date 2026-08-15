@@ -46,6 +46,11 @@ class DocumentNumberService
             'purchase_order' => ['PO', 'purchase_orders', 'po_number'],
             'purchase_receipt' => ['GRN', 'purchase_receipts', 'receipt_number'],
             'sale_return' => ['RET', 'sale_returns', 'return_number'],
+            'stock_transfer' => ['TRF', 'stock_transfers', 'transfer_number'],
+            'stock_count' => ['CNT', 'stock_counts', 'count_number'],
+            'quotation' => ['QTN', 'quotations', 'quote_number'],
+            'sales_order' => ['SO', 'sales_orders', 'order_number'],
+            'expense' => ['EXP', 'expenses', 'expense_number'],
             default => [strtoupper(substr($type, 0, 3)), '', ''],
         };
     }

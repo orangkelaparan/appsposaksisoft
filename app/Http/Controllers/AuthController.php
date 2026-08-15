@@ -44,7 +44,8 @@ class AuthController extends Controller
         RateLimiter::clear($key);
         $request->session()->regenerate();
         $role = DB::table('user_roles')->join('roles', 'roles.id', '=', 'user_roles.role_id')->where('user_roles.user_id', $user->id)->value('roles.name') ?? 'User';
-        $request->session()->put(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $role]);
+        $primaryStoreId = DB::table('user_stores')->where('user_id', $user->id)->orderByDesc('is_primary')->value('store_id');
+        $request->session()->put(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $role, 'active_store_id' => $primaryStoreId]);
         DB::table('users')->where('id', $user->id)->update(['last_login_at' => now()]);
         $audit->record('login', 'security', 'user', $user->id);
 

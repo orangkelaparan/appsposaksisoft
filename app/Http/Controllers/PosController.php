@@ -13,7 +13,7 @@ class PosController extends Controller
 {
     public function index(): View
     {
-        $store = DB::table('stores')->where('active', true)->orderBy('id')->first();
+        $store = $this->activeStore();
         $warehouse = DB::table('warehouses')->where('store_id', $store?->id)->where('active', true)->orderBy('id')->first();
         $register = DB::table('registers')->where('store_id', $store?->id)->where('active', true)->orderBy('id')->first();
         $session = $register ? DB::table('register_sessions')->where('register_id', $register->id)->where('user_id', session('user_id'))->where('status', 'open')->first() : null;
@@ -27,6 +27,8 @@ class PosController extends Controller
     public function search(Request $request): JsonResponse
     {
         $request->validate(['q' => ['nullable', 'string', 'max:120'], 'category_id' => ['nullable', 'integer', 'exists:categories,id'], 'warehouse_id' => ['required', 'integer']]);
+        $activeStore = $this->activeStore();
+        abort_unless(DB::table('warehouses')->where('id', (int) $request->input('warehouse_id'))->where('store_id', $activeStore->id)->exists(), 403);
         $query = trim((string) $request->input('q'));
         $products = $this->productsForPos((int) $request->input('warehouse_id'))
             ->when($request->filled('category_id'), fn ($builder) => $builder->where('products.category_id', (int) $request->input('category_id')))
@@ -55,6 +57,8 @@ class PosController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
+        $activeStore = $this->activeStore();
+        abort_unless((int) $data['store_id'] === (int) $activeStore->id && DB::table('warehouses')->where('id', $data['warehouse_id'])->where('store_id', $activeStore->id)->exists(), 403);
         $saleId = $sales->complete($data);
         $sale = DB::table('sales')->find($saleId);
 
@@ -91,6 +95,18 @@ class PosController extends Controller
         $returnId = $sales->returnItem($saleId, (int) $data['sale_item_id'], (float) $data['quantity'], $data['reason']);
 
         return back()->with('success', "Return {$returnId} was completed and the stock ledger was updated.");
+    }
+
+    private function activeStore(): object
+    {
+        $stores = session('user_role') === 'Super Administrator'
+            ? DB::table('stores')->where('active', true)->orderBy('name')->get()
+            : DB::table('stores')->join('user_stores', 'user_stores.store_id', '=', 'stores.id')->where('user_stores.user_id', session('user_id'))->where('stores.active', true)->select('stores.*')->orderBy('stores.name')->get();
+        $store = $stores->firstWhere('id', session('active_store_id')) ?: $stores->first();
+        abort_unless($store, 403, 'No outlet is assigned to this user.');
+        session(['active_store_id' => $store->id]);
+
+        return $store;
     }
 
     private function productsForPos(?int $warehouseId)

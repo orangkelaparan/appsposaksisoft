@@ -24,6 +24,7 @@
             <p class="nav-group">Catalog & Inventory</p>
             <a class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}" href="{{ route('products.index') }}"><span>▤</span>Products</a>
             <a class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}" href="{{ route('inventory.index') }}"><span>◈</span>Inventory Ledger</a>
+            <a class="nav-item {{ request()->routeIs('operations.*') ? 'active' : '' }}" href="{{ route('operations.index', 'transfers') }}"><span>↔</span>Operations Hub</a>
             <p class="nav-group">Purchasing</p>
             <a class="nav-item {{ request()->routeIs('suppliers.*') ? 'active' : '' }}" href="{{ route('suppliers.index') }}"><span>◌</span>Suppliers</a>
             <a class="nav-item {{ request()->routeIs('purchases.*') ? 'active' : '' }}" href="{{ route('purchases.index') }}"><span>▧</span>Purchase Orders</a>

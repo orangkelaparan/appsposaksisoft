@@ -37,6 +37,7 @@ class RichDemoSeeder extends Seeder
         $sales = $this->seedSales($productRows, $customerIds, $cashierIds, $sessions, $centralStoreId, $centralWarehouseId, $now);
         $this->seedReturns($sales, $centralWarehouseId, $adminId, $now);
         $this->seedExpensesAndCash($sessions, $centralStoreId, $cashierIds, $now);
+        $this->seedPriorityOperations($productRows, $customerIds, $adminId, $centralStoreId, $bandungStoreId, $centralWarehouseId, $bandungWarehouseId, $now);
         $this->seedAuditHistory($cashierIds, $productIds, $now);
     }
 
@@ -229,6 +230,51 @@ class RichDemoSeeder extends Seeder
         for ($i = 1; $i <= 60; $i++) {
             $at = $now->copy()->subDays($i);
             DB::table('cash_movements')->insert(['register_session_id' => $sessions[$i % count($sessions)], 'user_id' => $cashierIds[$i % count($cashierIds)], 'type' => $i % 2 === 0 ? 'cash_in' : 'cash_out', 'amount' => 20000 + (($i % 8) * 10000), 'reason' => $i % 2 === 0 ? 'Tambahan uang kecil kasir demo' : 'Pembayaran operasional demo', 'created_at' => $at, 'updated_at' => $at]);
+        }
+    }
+
+    private function seedPriorityOperations($products, array $customerIds, int $adminId, int $centralStoreId, int $bandungStoreId, int $centralWarehouseId, int $bandungWarehouseId, Carbon $now): void
+    {
+        foreach ([
+            ['TRF-2026-000001', 'received', 0, 0, 18, 2],
+            ['TRF-2026-000002', 'shipped', 1, 1, 12, 5],
+            ['TRF-2026-000003', 'draft', 2, 2, 8, 8],
+        ] as [$number, $status, $productIndex, $daysAgo, $quantity, $received]) {
+            $at = $now->copy()->subDays(12 - $daysAgo);
+            $transferId = DB::table('stock_transfers')->insertGetId(['source_warehouse_id' => $centralWarehouseId, 'destination_warehouse_id' => $bandungWarehouseId, 'created_by' => $adminId, 'approved_by' => $status !== 'draft' ? $adminId : null, 'shipped_by' => in_array($status, ['shipped', 'received'], true) ? $adminId : null, 'received_by' => $status === 'received' ? $adminId : null, 'transfer_number' => $number, 'status' => $status, 'approved_at' => $status !== 'draft' ? $at : null, 'shipped_at' => in_array($status, ['shipped', 'received'], true) ? $at->copy()->addHour() : null, 'received_at' => $status === 'received' ? $at->copy()->addHours(5) : null, 'notes' => 'Transfer stok antar-outlet untuk simulasi operasional.', 'created_at' => $at, 'updated_at' => $at]);
+            $product = $products[$productIndex];
+            DB::table('stock_transfer_items')->insert(['stock_transfer_id' => $transferId, 'product_id' => $product->id, 'requested_quantity' => $quantity, 'shipped_quantity' => $status === 'draft' ? 0 : $quantity, 'received_quantity' => $status === 'received' ? $received : 0, 'unit_cost' => $product->purchase_cost, 'created_at' => $at, 'updated_at' => $at]);
+            if (in_array($status, ['shipped', 'received'], true)) {
+                $source = DB::table('inventory_stocks')->where('warehouse_id', $centralWarehouseId)->where('product_id', $product->id)->first();
+                if ($source) {
+                    DB::table('inventory_stocks')->where('id', $source->id)->update(['quantity' => max(0, (float) $source->quantity - $quantity), 'updated_at' => $at]);
+                    DB::table('inventory_ledgers')->insert(['warehouse_id' => $centralWarehouseId, 'product_id' => $product->id, 'user_id' => $adminId, 'movement_type' => 'transfer_out', 'quantity' => -$quantity, 'before_quantity' => $source->quantity, 'after_quantity' => max(0, (float) $source->quantity - $quantity), 'unit_cost' => $product->purchase_cost, 'reference_type' => 'stock_transfer', 'reference_id' => $transferId, 'note' => 'Transfer antar-outlet demo', 'created_at' => $at, 'updated_at' => $at]);
+                }
+            }
+            if ($status === 'received') {
+                DB::table('inventory_stocks')->updateOrInsert(['warehouse_id' => $bandungWarehouseId, 'product_id' => $product->id], ['quantity' => $received, 'average_cost' => $product->purchase_cost, 'created_at' => $at, 'updated_at' => $at]);
+                DB::table('inventory_ledgers')->insert(['warehouse_id' => $bandungWarehouseId, 'product_id' => $product->id, 'user_id' => $adminId, 'movement_type' => 'transfer_in', 'quantity' => $received, 'before_quantity' => 0, 'after_quantity' => $received, 'unit_cost' => $product->purchase_cost, 'reference_type' => 'stock_transfer', 'reference_id' => $transferId, 'note' => 'Penerimaan transfer antar-outlet demo', 'created_at' => $at, 'updated_at' => $at]);
+            }
+        }
+
+        foreach ([['CNT-2026-000001', 'approved', 25, 24], ['CNT-2026-000002', 'counted', 27, 31], ['CNT-2026-000003', 'draft', 30, null]] as [$number, $status, $productIndex, $counted]) {
+            $at = $now->copy()->subDays($productIndex % 9 + 2);
+            $product = $products[$productIndex];
+            $system = (float) DB::table('inventory_stocks')->where('warehouse_id', $centralWarehouseId)->where('product_id', $product->id)->value('quantity');
+            $countId = DB::table('stock_counts')->insertGetId(['warehouse_id' => $centralWarehouseId, 'created_by' => $adminId, 'approved_by' => $status === 'approved' ? $adminId : null, 'count_number' => $number, 'status' => $status, 'snapshot_at' => $at, 'counted_at' => $counted !== null ? $at->copy()->addHours(2) : null, 'approved_at' => $status === 'approved' ? $at->copy()->addHours(4) : null, 'notes' => 'Stocktake simulasi dengan varians terukur.', 'created_at' => $at, 'updated_at' => $at]);
+            DB::table('stock_count_items')->insert(['stock_count_id' => $countId, 'product_id' => $product->id, 'system_quantity' => $system, 'counted_quantity' => $counted, 'variance_quantity' => $counted === null ? null : $counted - $system, 'created_at' => $at, 'updated_at' => $at]);
+        }
+
+        foreach ([['QTN-2026-000001', 'accepted', 3, 6], ['QTN-2026-000002', 'draft', 4, 8], ['QTN-2026-000003', 'draft', 7, 3]] as $i => [$number, $status, $productIndex, $quantity]) {
+            $at = $now->copy()->subDays(9 - $i);
+            $product = $products[$productIndex];
+            $total = $quantity * $product->selling_price;
+            $quoteId = DB::table('quotations')->insertGetId(['store_id' => $centralStoreId, 'warehouse_id' => $centralWarehouseId, 'customer_id' => $customerIds[$i % count($customerIds)], 'created_by' => $adminId, 'quote_number' => $number, 'quote_date' => $at->toDateString(), 'valid_until' => $at->copy()->addDays(14)->toDateString(), 'subtotal' => $total, 'discount_total' => 0, 'tax_total' => 0, 'grand_total' => $total, 'status' => $status, 'notes' => 'Penawaran produk untuk pelanggan demo.', 'created_at' => $at, 'updated_at' => $at]);
+            DB::table('quotation_items')->insert(['quotation_id' => $quoteId, 'product_id' => $product->id, 'product_name' => $product->name, 'sku' => $product->sku, 'quantity' => $quantity, 'unit_price' => $product->selling_price, 'discount_amount' => 0, 'line_total' => $total, 'created_at' => $at, 'updated_at' => $at]);
+            if ($i === 0) {
+                $orderId = DB::table('sales_orders')->insertGetId(['store_id' => $centralStoreId, 'warehouse_id' => $centralWarehouseId, 'customer_id' => $customerIds[0], 'quotation_id' => $quoteId, 'created_by' => $adminId, 'order_number' => 'SO-2026-000001', 'order_date' => $at->copy()->addDay()->toDateString(), 'due_date' => $at->copy()->addDays(7)->toDateString(), 'subtotal' => $total, 'discount_total' => 0, 'tax_total' => 0, 'grand_total' => $total, 'status' => 'confirmed', 'notes' => 'Sales order hasil konversi quotation demo.', 'created_at' => $at, 'updated_at' => $at]);
+                DB::table('sales_order_items')->insert(['sales_order_id' => $orderId, 'product_id' => $product->id, 'product_name' => $product->name, 'sku' => $product->sku, 'quantity' => $quantity, 'fulfilled_quantity' => 0, 'unit_price' => $product->selling_price, 'discount_amount' => 0, 'line_total' => $total, 'created_at' => $at, 'updated_at' => $at]);
+            }
         }
     }
 

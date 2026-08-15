@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BackOfficeController extends Controller
 {
@@ -49,6 +50,66 @@ class BackOfficeController extends Controller
         $audit->record('created', 'products', 'product', $id, null, $data);
 
         return back()->with('success', 'Product created successfully.');
+    }
+
+    public function exportProducts(AuditService $audit): StreamedResponse
+    {
+        $this->authorizePermission('products.export');
+        $audit->record('exported', 'products', 'product_catalog', null, null, ['format' => 'csv']);
+
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, ['sku', 'barcode', 'name', 'category_id', 'brand_id', 'unit_id', 'purchase_cost', 'selling_price', 'low_stock_threshold', 'description']);
+            DB::table('products')->orderBy('id')->select('sku', 'barcode', 'name', 'category_id', 'brand_id', 'unit_id', 'purchase_cost', 'selling_price', 'low_stock_threshold', 'description')->chunk(250, function ($products) use ($output): void {
+                foreach ($products as $product) {
+                    fputcsv($output, (array) $product);
+                }
+            });
+            fclose($output);
+        }, 'aksisoft-products-'.now()->format('Ymd-His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function importProducts(Request $request, AuditService $audit): RedirectResponse
+    {
+        $this->authorizePermission('products.import');
+        $request->validate(['products_csv' => ['required', 'file', 'mimes:csv,txt', 'max:2048']]);
+        $handle = fopen($request->file('products_csv')->getRealPath(), 'r');
+        $header = fgetcsv($handle);
+        $required = ['sku', 'name', 'purchase_cost', 'selling_price'];
+        if (! $header || array_diff($required, $header)) {
+            fclose($handle);
+
+            return back()->withErrors(['products_csv' => 'CSV must include sku, name, purchase_cost, and selling_price columns.']);
+        }
+        $columns = array_flip($header);
+        $imported = 0;
+        DB::transaction(function () use ($handle, $columns, &$imported): void {
+            while (($row = fgetcsv($handle)) !== false) {
+                if (count($row) === 1 && trim((string) $row[0]) === '') {
+                    continue;
+                }
+                $value = fn (string $key, mixed $default = null) => array_key_exists($key, $columns) ? ($row[$columns[$key]] ?? $default) : $default;
+                $sku = trim((string) $value('sku'));
+                $name = trim((string) $value('name'));
+                $cost = $value('purchase_cost');
+                $price = $value('selling_price');
+                if ($sku === '' || $name === '' || ! is_numeric($cost) || ! is_numeric($price) || (float) $cost < 0 || (float) $price < 0) {
+                    continue;
+                }
+                $existing = DB::table('products')->where('sku', $sku)->first();
+                $data = ['barcode' => trim((string) $value('barcode')) ?: null, 'name' => $name, 'category_id' => is_numeric($value('category_id')) ? (int) $value('category_id') : null, 'brand_id' => is_numeric($value('brand_id')) ? (int) $value('brand_id') : null, 'unit_id' => is_numeric($value('unit_id')) ? (int) $value('unit_id') : 1, 'purchase_cost' => $cost, 'selling_price' => $price, 'low_stock_threshold' => is_numeric($value('low_stock_threshold')) ? $value('low_stock_threshold') : 0, 'description' => $value('description'), 'image_path' => 'images/products/placeholder.svg', 'product_type' => 'simple', 'track_inventory' => true, 'allow_negative_inventory' => false, 'active' => true, 'updated_at' => now()];
+                if ($existing) {
+                    DB::table('products')->where('id', $existing->id)->update($data);
+                } else {
+                    DB::table('products')->insert(array_merge($data, ['sku' => $sku, 'slug' => Str::slug($name).'-'.Str::lower(Str::random(6)), 'created_at' => now()]));
+                }
+                $imported++;
+            }
+        });
+        fclose($handle);
+        $audit->record('imported', 'products', 'product_catalog', null, null, ['format' => 'csv', 'rows' => $imported]);
+
+        return back()->with('success', "Imported or updated {$imported} products from CSV.");
     }
 
     public function customers(): View
