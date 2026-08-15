@@ -23,7 +23,7 @@ return new class extends Migration
             $table->timestamp('received_at')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->index(['source_warehouse_id', 'destination_warehouse_id', 'status']);
+            $table->index(['source_warehouse_id', 'destination_warehouse_id', 'status'], 'stock_transfers_route_status_idx');
         });
 
         Schema::create('stock_transfer_items', function (Blueprint $table) {
