@@ -18,7 +18,16 @@ class AuthController extends Controller
             return redirect()->route('dashboard');
         }
 
-        return view('auth.login');
+        return view('auth.login', ['demoAccounts' => [
+            ['name' => 'Administrator', 'role' => 'Super Administrator', 'login' => 'admin@aksisoft.web.id'],
+            ['name' => 'Siti Rahmawati', 'role' => 'Cashier · Jakarta', 'login' => 'siti.rahmawati@aksisoft.web.id'],
+            ['name' => 'Rizky Pratama', 'role' => 'Cashier · Bandung', 'login' => 'rizky.pratama@aksisoft.web.id'],
+            ['name' => 'Dewi Anggraini', 'role' => 'Manager · Jakarta', 'login' => 'dewi.anggraini@aksisoft.web.id'],
+            ['name' => 'Arif Nugroho', 'role' => 'Inventory Staff', 'login' => 'arif.nugroho@aksisoft.web.id'],
+            ['name' => 'Nadia Putri', 'role' => 'Purchasing Staff', 'login' => 'nadia.putri@aksisoft.web.id'],
+            ['name' => 'Fajar Maulana', 'role' => 'Accountant / Finance', 'login' => 'fajar.maulana@aksisoft.web.id'],
+            ['name' => 'Lina Kurnia', 'role' => 'Auditor', 'login' => 'lina.kurnia@aksisoft.web.id'],
+        ]]);
     }
 
     public function login(Request $request, AuditService $audit): RedirectResponse
@@ -49,7 +58,33 @@ class AuthController extends Controller
         DB::table('users')->where('id', $user->id)->update(['last_login_at' => now()]);
         $audit->record('login', 'security', 'user', $user->id);
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->route($this->landingRouteFor($user->id, $role));
+    }
+
+    private function landingRouteFor(int $userId, string $role): string
+    {
+        if ($role === 'Super Administrator') {
+            return 'dashboard';
+        }
+        $permissions = DB::table('user_roles')
+            ->join('role_permissions', 'role_permissions.role_id', '=', 'user_roles.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+            ->where('user_roles.user_id', $userId)
+            ->pluck('permissions.slug');
+        foreach ([
+            'dashboard.view' => 'dashboard',
+            'sales.create' => 'pos.index',
+            'inventory.view' => 'inventory.index',
+            'purchases.view' => 'purchases.index',
+            'customers.view' => 'customers.index',
+            'reports.view' => 'reports.index',
+        ] as $permission => $route) {
+            if ($permissions->contains($permission)) {
+                return $route;
+            }
+        }
+
+        return 'pos.index';
     }
 
     public function logout(Request $request, AuditService $audit): RedirectResponse

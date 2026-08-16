@@ -16,6 +16,9 @@ class DatabaseSeeder extends Seeder
         if (! $password && app()->environment('testing')) {
             $password = 'testing-password';
         }
+        if (! $password && filter_var(env('DEMO_SEED', false), FILTER_VALIDATE_BOOL)) {
+            $password = env('DEMO_LOGIN_PASSWORD', 'DemoAksiSoft2026!');
+        }
         if (! $password) {
             throw new RuntimeException('Set ADMIN_PASSWORD in the environment before running the database seeder.');
         }
@@ -43,7 +46,7 @@ class DatabaseSeeder extends Seeder
                 }
             }
         }
-        $adminId = DB::table('users')->insertGetId(['name' => env('ADMIN_NAME', 'AksiSoft Administrator'), 'email' => env('ADMIN_EMAIL', 'admin@aksisoft.test'), 'username' => env('ADMIN_USERNAME', 'admin'), 'password' => Hash::make($password), 'status' => 'active', 'email_verified_at' => $now, 'created_at' => $now, 'updated_at' => $now]);
+        $adminId = DB::table('users')->insertGetId(['name' => env('ADMIN_NAME', 'AksiSoft Administrator'), 'email' => env('ADMIN_EMAIL', 'admin@aksisoft.web.id'), 'username' => env('ADMIN_USERNAME', 'admin'), 'password' => Hash::make($password), 'status' => 'active', 'email_verified_at' => $now, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('user_roles')->insert(['user_id' => $adminId, 'role_id' => DB::table('roles')->where('slug', 'super-administrator')->value('id')]);
         DB::table('user_stores')->insert(['user_id' => $adminId, 'store_id' => $centralStore, 'is_primary' => true]);
         foreach ([['Pieces', 'pcs', 1], ['Bottle', 'btl', 1], ['Pack', 'pack', 1], ['Kilogram', 'kg', 1], ['Carton', 'ctn', 24]] as $unit) {

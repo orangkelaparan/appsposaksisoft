@@ -79,7 +79,7 @@ class RichDemoSeeder extends Seeder
         ];
         $ids = [];
         foreach ($definitions as [$name, $username, $role, $storeId]) {
-            $id = DB::table('users')->insertGetId(['name' => $name, 'email' => $username.'@aksisoft.web.id', 'username' => $username, 'password' => Hash::make(Str::password(32)), 'status' => 'active', 'email_verified_at' => $now, 'last_login_at' => $now->copy()->subDays(random_int(1, 18)), 'created_at' => $now, 'updated_at' => $now]);
+            $id = DB::table('users')->insertGetId(['name' => $name, 'email' => $username.'@aksisoft.web.id', 'username' => $username, 'password' => Hash::make(env('DEMO_LOGIN_PASSWORD', 'DemoAksiSoft2026!')), 'status' => 'active', 'email_verified_at' => $now, 'last_login_at' => $now->copy()->subDays(random_int(1, 18)), 'created_at' => $now, 'updated_at' => $now]);
             DB::table('user_roles')->insert(['user_id' => $id, 'role_id' => $roles[$role]]);
             DB::table('user_stores')->insert(['user_id' => $id, 'store_id' => $storeId, 'is_primary' => true]);
             $ids[] = $id;
